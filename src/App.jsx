@@ -13,7 +13,13 @@ const STATE_CFG = {
     nightmare: { label: "Somni · Nightmare", color: "#9088b8" },
     strange: { label: "Somni · Strange", color: "#d8b870" },
     display: { label: "Somni · Display", color: "#c8a878" },
+    looking: { label: "Somni · Looking", color: "#a8a890" },
+    look: { label: "Somni · Look", color: "#a8a890" },
+    waving: { label: "Somni · Greeting", color: "#c9b9a6" },
+    farewell: { label: "Somni · Farewell", color: "#c9b9a6" },
 };
+
+// One GLB per animation/state
 const STATE_TO_GLB = {
     idle: "/models/Idle.glb",
     collect: "/models/Collect.glb",
@@ -21,42 +27,89 @@ const STATE_TO_GLB = {
     nightmare: "/models/Nightmare.glb",
     strange: "/models/Strange.glb",
     display: "/models/Display.glb",
+    looking: "/models/Looking Around.glb",
+    look: "/models/Look.glb",
+    waving: "/models/Waving.glb",
+    farewell: "/models/Waving2.glb",
 };
 
+// Keyword detection
 function classifyDream(t) {
     if (/噩梦|恐怖|害怕|恐惧|可怕|黑暗|阴暗|被追|追我|逃跑|逃不掉|死|死亡|杀|怪物|鬼|血|溺水|坠落|绝望|窒息|困住|发不出声|动不了|挣扎/.test(t)) return "nightmare";
     if (/美梦|幸福|快乐|开心|温柔|温暖|爱|爱意|阳光|花|花朵|微笑|笑|拥抱|亲吻|甜|美好|治愈|光|光明|飞翔|自由|彩虹|海边|草地|安心|满足/.test(t)) return "sweet";
     if (/奇异|奇怪|诡异|扭曲|变形|异世界|异空间|平行|穿越|时空|怪异|奇幻|魔法|神秘|不真实|梦中梦|迷宫|消失了|突然变成|莫名其妙|说不清|分不清|现实与梦/.test(t)) return "strange";
     return "collect";
 }
+
+// Words that trigger "looking" or "look" animation variants instead of the default for that category
+// (used when the dream mentions searching / observing / distance — adds variety)
+function maybeObservationVariant(text, baseState) {
+    const lookingWords = /四处|寻找|找不到|环顾|周围|张望|徘徊|迷路|找路/;
+    const lookWords = /远方|远处|前方|望向|看见了|看到了远|地平线|尽头/;
+    if (lookingWords.test(text) && Math.random() < 0.6) return "looking";
+    if (lookWords.test(text) && Math.random() < 0.6) return "look";
+    return baseState;
+}
+
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Response pools — Nightmare responses rewritten to match a "frightened" animation
 const RESPONSES = {
-    collect: ["我感受到了。这个梦，我会好好保存。", "收到了。每一个平凡的梦，都有它独特的纹路。", "这个梦已归档。它比你想象的更有分量。", "我把它放进了今夜的档案。谢谢你记得它。", "嗯……我听见了。这种梦，往往藏着最真实的情绪。"],
-    sweet: ["多温柔的梦。它像光一样落在我手里，轻得像一片花瓣。", "这个梦让我的手指都暖了。我会把它放在档案馆最亮的地方。", "美梦是最难保存的——它们总是想飞走。但我接住了这个。", "收到了。这样的梦，值得被反复阅读。", "……真好。你做了一个真正好的梦。"],
-    nightmare: ["我知道了。即使是噩梦，也值得被记录。有时候，黑暗才是最诚实的语言。", "不要怕。我会替你保管这个黑暗。它伤不到你了。", "噩梦也是梦。我把它收进了一个安静的角落。", "感谢你把它说出来。留在心里的噩梦，才是最重的。", "……我接住了。这种重量，你不必一个人扛。"],
-    strange: ["这个梦很奇特。它像是来自某个尚未命名的地方。", "我从未见过这样的碎片——它的边缘有一种奇异的光。", "奇异的梦总是最先消失的。幸好你来了。", "这个……我需要仔细研究。它不像这个时空的东西。", "……有意思。你的梦境，越过了某条我以为不存在的边界。"],
+    collect: [
+        "我感受到了。这个梦，我会好好保存。",
+        "收到了。每一个平凡的梦，都有它独特的纹路。",
+        "这个梦已归档。它比你想象的更有分量。",
+        "我把它放进了今夜的档案。谢谢你记得它。",
+        "嗯……我听见了。这种梦，往往藏着最真实的情绪。",
+    ],
+    sweet: [
+        "多温柔的梦。它像光一样落在我手里，轻得像一片花瓣。",
+        "这个梦让我的手指都暖了。我会把它放在档案馆最亮的地方。",
+        "美梦是最难保存的——它们总是想飞走。但我接住了这个。",
+        "收到了。这样的梦，值得被反复阅读。",
+        "……真好。你做了一个真正好的梦。",
+    ],
+    // Rewritten to match a frightened/startled animation rather than a calm, composed one
+    nightmare: [
+        "等……等一下。这个梦的重量，我得先稳住自己再收好它。",
+        "……它让我也不安了一下。但别担心，我会把它牢牢锁进最深的档案里。",
+        "这种感觉……我懂。黑暗的梦总让我也忍不住后退一步。",
+        "我接住了，但说实话——它确实让我心跳漏了一拍。",
+        "……噩梦的重量，连档案员也扛不住啊。我会小心收好它的。",
+    ],
+    strange: [
+        "这个梦很奇特。它像是来自某个尚未命名的地方。",
+        "我从未见过这样的碎片——它的边缘有一种奇异的光。",
+        "奇异的梦总是最先消失的。幸好你来了。",
+        "这个……我需要仔细研究。它不像这个时空的东西。",
+        "……有意思。你的梦境，越过了某条我以为不存在的边界。",
+    ],
 };
 
+// Idle whispers — most are plain idle lines, a few are paired with looking/look animations
 const IDLE_WHISPERS = [
-    "今夜有多少人正在做梦……",
-    "梦与梦之间，是否也有边界？",
-    "有些梦只在黎明前几分钟存在。",
-    "我听见了什么——是一个梦碎裂的声音。",
-    "人类总是忘记最美的那部分。",
-    "平行时空的档案室，从不关灯。",
-    "有一个梦，来了又走了……",
-    "Somewhere, someone is dreaming of the sea.",
-    "碎片。又一片碎片落入档案。",
-    "等待本身，也是一种收集。",
-    "这里的每一条记录，都曾是某人的真实。",
-    "梦境会消散，但档案永存。",
+    { text: "今夜有多少人正在做梦……", anim: "idle" },
+    { text: "梦与梦之间，是否也有边界？", anim: "idle" },
+    { text: "有些梦只在黎明前几分钟存在。", anim: "idle" },
+    { text: "我听见了什么——是一个梦碎裂的声音。", anim: "idle" },
+    { text: "人类总是忘记最美的那部分。", anim: "idle" },
+    { text: "平行时空的档案室，从不关灯。", anim: "idle" },
+    { text: "有一个梦，来了又走了……", anim: "idle" },
+    { text: "Somewhere, someone is dreaming of the sea.", anim: "idle" },
+    { text: "碎片。又一片碎片落入档案。", anim: "idle" },
+    { text: "等待本身，也是一种收集。", anim: "idle" },
+    { text: "这里的每一条记录，都曾是某人的真实。", anim: "idle" },
+    { text: "梦境会消散，但档案永存。", anim: "idle" },
+    { text: "……我总觉得这附近有个梦正在靠近。", anim: "looking" },
+    { text: "四处都是细微的声音，像是谁在低语。", anim: "looking" },
+    { text: "远处好像有什么东西，在边界之外闪烁。", anim: "look" },
+    { text: "我望向那个方向——那里曾经有一个梦境入口。", anim: "look" },
 ];
 
 const SEED_DREAMS = [
     { id: "seed-1", text: "我梦见自己站在一片无边的白色平原上，脚下的雪不融化，但我感觉不到冷。", state: "strange", date: "2025年1月3日", author: "无名旅人", shared: true, response: "这个梦很奇特。白色的平原——是某种纯粹的开始，还是某种记忆的终点？" },
     { id: "seed-2", text: "梦里我和一个很久不见的朋友坐在海边，什么都没说，却感觉很温暖。", state: "sweet", date: "2025年2月14日", author: "晚风", shared: true, response: "多温柔的梦。有些情感不需要语言，沉默本身就是最深的陪伴。" },
-    { id: "seed-3", text: "有什么东西在黑暗里追我，我拼命跑但双腿像灌了铅，怎么也跑不动。", state: "nightmare", date: "2025年3月7日", author: "深夜失眠者", shared: true, response: "即使是噩梦，也值得被记录。恐惧是潜意识在和你说话。" },
+    { id: "seed-3", text: "有什么东西在黑暗里追我，我拼命跑但双腿像灌了铅，怎么也跑不动。", state: "nightmare", date: "2025年3月7日", author: "深夜失眠者", shared: true, response: "等等……这个梦的重量，我得先稳住自己再收好它。" },
 ];
 
 const PANEL_W = 290;
@@ -65,16 +118,16 @@ function loadStorage(k, fb) { try { const v = localStorage.getItem(k); return v 
 function saveStorage(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 function formatDate(d) { return d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }); }
 
-// ── IDLE WHISPER HOOK ─────────────────────────────────────────
+// ── IDLE WHISPER HOOK — returns { text, anim } or null ────────
 function useIdleWhisper(dreamState) {
-    const [whisper, setWhisper] = useState("");
+    const [whisper, setWhisper] = useState(null);
     const timerRef = useRef(null);
     useEffect(() => {
-        if (dreamState !== "idle") { setWhisper(""); return; }
+        if (dreamState !== "idle") { setWhisper(null); return; }
         const schedule = () => {
             timerRef.current = setTimeout(() => {
                 setWhisper(getRandom(IDLE_WHISPERS));
-                setTimeout(() => { setWhisper(""); schedule(); }, 5500);
+                setTimeout(() => { setWhisper(null); schedule(); }, 5500);
             }, 10000 + Math.random() * 10000);
         };
         schedule();
@@ -83,7 +136,7 @@ function useIdleWhisper(dreamState) {
     return whisper;
 }
 
-// ── NEBULA BACKGROUND (CSS, behind canvas) ────────────────────
+// ── NEBULA BACKGROUND ──────────────────────────────────────────
 function NebulaLayer() {
     return (
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0, background: "linear-gradient(165deg,#161310 0%,#1e1b17 55%,#191715 100%)" }}>
@@ -113,7 +166,7 @@ function NebulaLayer() {
     );
 }
 
-// ── 3D PARTICLES (floating dust inside the canvas) ────────────
+// ── 3D PARTICLES ──────────────────────────────────────────────
 function DreamDust() {
     const rA = useRef(), rB = useRef();
     const pA = useMemo(() => {
@@ -173,7 +226,7 @@ function DreamFragment({ active, color }) {
 }
 
 // ── ANIMATED MODEL ────────────────────────────────────────────
-function AnimatedModel({ path }) {
+function AnimatedModel({ path, loop = true }) {
     const group = useRef();
     const { scene, animations } = useGLTF(path);
     const { actions } = useAnimations(animations, group);
@@ -189,9 +242,10 @@ function AnimatedModel({ path }) {
         const names = Object.keys(actions);
         if (!names.length) return;
         const act = actions[names[0]];
-        act.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.45).play();
+        act.reset().setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1).fadeIn(0.4).play();
+        if (!loop) act.clampWhenFinished = true;
         return () => { try { act.stop(); } catch { } };
-    }, [actions]);
+    }, [actions, loop]);
     return <group ref={group} position={[0, 0.18, 0]}><primitive object={scene} /></group>;
 }
 
@@ -199,9 +253,10 @@ function AnimatedModel({ path }) {
 function Avatar({ dreamState }) {
     const path = STATE_TO_GLB[dreamState] ?? STATE_TO_GLB.idle;
     const fc = STATE_COLORS[dreamState] ?? "#c8b89a";
+    const isOneShot = dreamState === "waving" || dreamState === "farewell";
     return (<>
         <Suspense fallback={null}>
-            <AnimatedModel key={path} path={path} />
+            <AnimatedModel key={path} path={path} loop={!isOneShot} />
         </Suspense>
         {[...Array(6)].map((_, i) => <DreamFragment key={i} active={dreamState === "display"} color={fc} />)}
     </>);
@@ -274,6 +329,46 @@ function IntroScreen({ onEnter }) {
     );
 }
 
+// ── FAREWELL SCREEN ───────────────────────────────────────────
+function FarewellScreen({ onReturn }) {
+    const [visible, setVisible] = useState(false);
+    useEffect(() => { const t = setTimeout(() => setVisible(true), 50); return () => clearTimeout(t); }, []);
+    return (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#0c0a08 0%,#141110 55%,#0e0c0a 100%)", fontFamily: "Georgia,'Noto Serif SC',serif", opacity: visible ? 1 : 0, transition: "opacity 0.8s ease", padding: "0 24px" }}>
+            <div style={{ position: "absolute", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle,rgba(180,150,100,0.06) 0%,transparent 65%)", pointerEvents: "none" }} />
+            <div style={{ textAlign: "center", maxWidth: 440 }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.4em", color: "#4a4035", textTransform: "uppercase", marginBottom: 20 }}>Until Next Dream</div>
+                <div style={{ fontSize: 30, color: "#c8bdb0", fontWeight: 400, letterSpacing: "0.06em", marginBottom: 24 }}>愿你今夜好梦</div>
+                <p style={{ fontSize: 13, color: "#7a7068", lineHeight: 2.2, letterSpacing: "0.06em", fontStyle: "italic" }}>
+                    Somni 已经记下了你的梦。<br />无论何时归来，这扇门都会为你开着。
+                </p>
+                <div style={{ width: 60, height: 1, background: "linear-gradient(90deg,transparent,rgba(200,180,150,0.28),transparent)", margin: "28px auto" }} />
+                <button onClick={onReturn}
+                    style={{ padding: "12px 32px", borderRadius: 12, border: "1px solid rgba(201,185,166,0.28)", background: "rgba(201,185,166,0.08)", color: "#c9b9a6", fontSize: 12, cursor: "pointer", letterSpacing: "0.16em", fontFamily: "inherit", transition: "all 0.25s" }}
+                    onMouseEnter={e => { e.target.style.background = "rgba(201,185,166,0.18)"; }}
+                    onMouseLeave={e => { e.target.style.background = "rgba(201,185,166,0.08)"; }}>
+                    重新进入档案馆
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ── EXIT CONFIRM MODAL ────────────────────────────────────────
+function ExitConfirm({ onConfirm, onCancel }) {
+    return (
+        <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 250, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: "min(360px,86vw)", background: "linear-gradient(160deg,#1a1714 0%,#141210 100%)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, padding: "26px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: "#d0c5b8", lineHeight: 1.9, marginBottom: 20 }}>要离开梦境档案馆了吗？<br />Somni 会在这里等你回来。</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={onCancel} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#9a9082", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>留下</button>
+                    <button onClick={onConfirm} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid rgba(201,185,166,0.3)", background: "rgba(201,185,166,0.12)", color: "#c9b9a6", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>离开</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ── DREAM CARD ────────────────────────────────────────────────
 function DreamCard({ dream, onClose, onShare, onDelete }) {
     const col = STATE_COLORS[dream.state] ?? "#b8a99a";
@@ -312,7 +407,7 @@ function DreamCard({ dream, onClose, onShare, onDelete }) {
     );
 }
 
-// ── RIGHT PANEL — Public Archive (restored original name) ─────
+// ── RIGHT PANEL — Public Archive ───────────────────────────────
 function ArchivePanel({ publicDreams, onSelect }) {
     const shared = publicDreams.filter(d => d.shared);
     return (
@@ -423,21 +518,24 @@ function SidePanel({ tab, setTab, dream, setDream, isShared, setIsShared, myLogs
 // ── MAIN ──────────────────────────────────────────────────────
 export default function App() {
     const [showIntro, setShowIntro] = useState(true);
+    const [showFarewell, setShowFarewell] = useState(false);
+    const [showExitConfirm, setShowExitConfirm] = useState(false);
     const [username, setUsername] = useState("");
     const [dream, setDream] = useState("");
     const [isShared, setIsShared] = useState(true);
     const [myLogs, setMyLogs] = useState(() => loadStorage("dc_my_dreams", []));
     const [publicLogs, setPublicLogs] = useState(() => loadStorage("dc_public_dreams", SEED_DREAMS));
-    const [dreamState, setDreamState] = useState("idle");
+    const [dreamState, setDreamState] = useState("waving"); // greets on entry
     const [bubbleText, setBubbleText] = useState("");
-    const [bubbleColor, setBubbleColor] = useState("#b8ad9e");
+    const [bubbleColor, setBubbleColor] = useState("#c9b9a6");
     const [tab, setTab] = useState("input");
     const [modal, setModal] = useState(null);
     const timerRef = useRef(null);
 
     const idleWhisper = useIdleWhisper(dreamState);
-    const visibleBubbleText = dreamState === "idle" ? idleWhisper : bubbleText;
+    const visibleBubbleText = dreamState === "idle" ? (idleWhisper?.text ?? "") : bubbleText;
     const visibleBubbleColor = dreamState === "idle" ? "#9a8d7e" : bubbleColor;
+    const displayedDreamState = dreamState === "idle" && idleWhisper ? idleWhisper.anim : dreamState;
 
     const publicDreams = useMemo(() => {
         const c = [...publicLogs];
@@ -456,15 +554,26 @@ export default function App() {
         }, dur);
     };
 
+    // On entry: Waving greeting, then settle into idle
+    useEffect(() => {
+        if (showIntro) return;
+        setBubbleText("……啊，有人来了。欢迎来到梦境档案馆。");
+        setBubbleColor("#c9b9a6");
+        const t = setTimeout(() => { setDreamState("idle"); setBubbleText(""); }, 4500);
+        return () => clearTimeout(t);
+    }, [showIntro]);
+
     const handleSubmit = () => {
         if (!dream.trim()) return;
         const text = dream.trim();
-        const state = classifyDream(text);
-        const response = getRandom(RESPONSES[state]);
-        const entry = { id: Date.now(), text, state, date: formatDate(new Date()), author: username || "匿名旅人", shared: isShared, response };
+        let state = classifyDream(text);
+        state = maybeObservationVariant(text, state); // may swap to looking/look for variety
+        const responsePool = RESPONSES[state] || RESPONSES.collect;
+        const response = getRandom(responsePool);
+        const entry = { id: Date.now(), text, state: classifyDream(text), date: formatDate(new Date()), author: username || "匿名旅人", shared: isShared, response };
         const nm = [entry, ...myLogs]; setMyLogs(nm); saveStorage("dc_my_dreams", nm);
         if (isShared) { const np = [entry, ...publicLogs]; setPublicLogs(np); saveStorage("dc_public_dreams", np); }
-        fire(state, response, STATE_COLORS[state], 7000);
+        fire(state, response, STATE_COLORS[entry.state] || "#a8a890", 7000);
         setDream("");
     };
 
@@ -475,23 +584,36 @@ export default function App() {
 
     const handleShare = d => {
         setModal(null);
-        fire("display", d.response, STATE_COLORS[d.state] || "#c8a878", 9000);
+        // Occasionally show looking/look animation while narrating too
+        const narrateState = Math.random() < 0.25 ? getRandom(["looking", "look"]) : "display";
+        fire(narrateState, d.response, STATE_COLORS[d.state] || "#c8a878", 9000);
     };
 
-    const cfg = STATE_CFG[dreamState] ?? STATE_CFG.idle;
+    const handleExitConfirm = () => {
+        setShowExitConfirm(false);
+        setDreamState("farewell");
+        setBubbleText("……愿你今夜好梦。我们下次再见。");
+        setBubbleColor("#c9b9a6");
+        setTimeout(() => setShowFarewell(true), 2200);
+    };
+
+    const handleReturn = () => {
+        setShowFarewell(false);
+        setDreamState("waving");
+    };
+
+    const cfg = STATE_CFG[displayedDreamState] ?? STATE_CFG.idle;
 
     return (
         <div style={{ width: "100vw", height: "100vh", overflow: "hidden", fontFamily: "Georgia,'Noto Serif SC',serif", position: "relative" }}>
-            {/* Nebula + base dark background */}
             <NebulaLayer />
-            {/* Subtle grid overlay */}
             <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.008) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.008) 1px,transparent 1px)", backgroundSize: "80px 80px", pointerEvents: "none", zIndex: 1 }} />
-            {/* Vignette */}
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 35%,transparent 25%,rgba(0,0,0,0.55) 100%)", pointerEvents: "none", zIndex: 1 }} />
 
             {showIntro && <IntroScreen onEnter={n => { setUsername(n); setShowIntro(false); }} />}
+            {showFarewell && <FarewellScreen onReturn={handleReturn} />}
+            {showExitConfirm && <ExitConfirm onConfirm={handleExitConfirm} onCancel={() => setShowExitConfirm(false)} />}
 
-            {/* 3D Canvas — transparent so nebula shows through, particles render on top */}
             <CanvasWithRecovery
                 style={{ position: "absolute", inset: 0, zIndex: 2 }}
                 camera={{ position: [0, 0.9, 2.5], fov: 38 }}
@@ -510,7 +632,7 @@ export default function App() {
                     dampingFactor={0.06} enableDamping />
             </CanvasWithRecovery>
 
-            {/* Speech text — above Somni's head, no box, just glowing italic text */}
+            {/* Speech text — no box, above Somni's head */}
             <div style={{ position: "absolute", inset: 0, zIndex: 5, pointerEvents: "none" }}>
                 <div key={visibleBubbleText} style={{
                     position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)",
@@ -520,7 +642,7 @@ export default function App() {
                     width: "min(320px,40vw)",
                 }}>
                     <div style={{ fontSize: 9, color: visibleBubbleColor, letterSpacing: "0.24em", marginBottom: 8, textTransform: "uppercase", opacity: 0.85 }}>
-                        {dreamState === "idle" ? "Somni" : "Somni · " + dreamState}
+                        Somni
                     </div>
                     <div style={{ fontSize: 13, color: "#d8cdbe", lineHeight: 2.1, fontStyle: "italic", letterSpacing: "0.04em", whiteSpace: "pre-wrap", textShadow: `0 0 18px rgba(0,0,0,0.9), 0 0 30px ${visibleBubbleColor}40` }}>
                         {visibleBubbleText}
@@ -528,7 +650,6 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Panels */}
             <SidePanel tab={tab} setTab={setTab} dream={dream} setDream={setDream}
                 isShared={isShared} setIsShared={setIsShared} myLogs={myLogs}
                 onSubmit={handleSubmit} onSelectMine={d => setModal({ dream: d, canDelete: true })} />
@@ -543,10 +664,27 @@ export default function App() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
                     {username && <div style={{ fontSize: 12, color: "#7a7068", letterSpacing: "0.1em", borderRight: "1px solid rgba(255,255,255,0.08)", paddingRight: 10 }}>{username}</div>}
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, boxShadow: dreamState !== "idle" ? `0 0 8px ${cfg.color},0 0 18px ${cfg.color}55` : `0 0 5px ${cfg.color}70`, transition: "all 1s ease" }} />
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, boxShadow: displayedDreamState !== "idle" ? `0 0 8px ${cfg.color},0 0 18px ${cfg.color}55` : `0 0 5px ${cfg.color}70`, transition: "all 1s ease" }} />
                     <div style={{ fontSize: 11, color: cfg.color, letterSpacing: "0.1em", transition: "color 1s ease", fontStyle: "italic" }}>{cfg.label}</div>
                 </div>
             </div>
+
+            {/* Bottom-right exit button */}
+            {!showIntro && !showFarewell && (
+                <button onClick={() => setShowExitConfirm(true)}
+                    style={{
+                        position: "absolute", bottom: 20, right: 20, zIndex: 20,
+                        padding: "9px 18px", borderRadius: 10,
+                        border: "1px solid rgba(255,255,255,0.1)", background: "rgba(16,13,11,0.7)",
+                        backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                        color: "#7a7068", fontSize: 11, cursor: "pointer", letterSpacing: "0.1em",
+                        fontFamily: "inherit", transition: "all 0.2s",
+                    }}
+                    onMouseEnter={e => { e.target.style.color = "#c8bdb0"; e.target.style.borderColor = "rgba(255,255,255,0.2)"; }}
+                    onMouseLeave={e => { e.target.style.color = "#7a7068"; e.target.style.borderColor = "rgba(255,255,255,0.1)"; }}>
+                    离开档案馆
+                </button>
+            )}
 
             {modal && <DreamCard dream={modal.dream} onClose={() => setModal(null)} onShare={handleShare} onDelete={modal.canDelete ? handleDelete : null} />}
         </div>
