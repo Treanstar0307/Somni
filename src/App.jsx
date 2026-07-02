@@ -1,7 +1,40 @@
 ﻿import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Environment, useAnimations } from "@react-three/drei";
-import { useRef, useState, useMemo, useEffect, Suspense } from "react";
+import { useRef, useState, useMemo, useEffect, Suspense, Component } from "react";
 import * as THREE from "three";
+
+// ── ERROR BOUNDARY — shows the real error instead of a blank/frozen screen ──
+class ErrorBoundary extends Component {
+    constructor(props) { super(props); this.state = { error: null }; }
+    static getDerivedStateFromError(error) { return { error }; }
+    componentDidCatch(error, info) { console.error("App crashed:", error, info); }
+    handleReset = () => {
+        try { localStorage.removeItem("dc_my_dreams"); localStorage.removeItem("dc_public_dreams"); } catch { }
+        this.setState({ error: null });
+        window.location.reload();
+    };
+    render() {
+        if (this.state.error) {
+            return (
+                <div style={{
+                    width: "100vw", height: "100vh", display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center", background: "#161310",
+                    color: "#c8bdb0", fontFamily: "Georgia, sans-serif", padding: 24, textAlign: "center",
+                }}>
+                    <div style={{ fontSize: 18, marginBottom: 12 }}>梦境档案馆遇到了一点问题</div>
+                    <div style={{ fontSize: 12, color: "#9a8d7e", marginBottom: 20, maxWidth: 500, wordBreak: "break-word" }}>
+                        {String(this.state.error?.message || this.state.error)}
+                    </div>
+                    <button onClick={this.handleReset}
+                        style={{ padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(201,185,166,0.3)", background: "rgba(201,185,166,0.1)", color: "#c9b9a6", fontSize: 13, cursor: "pointer" }}>
+                        清除本地数据并重新加载
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 // ── STATE CONFIG ───────────────────────────────────────────────
 const STATE_COLORS = { collect: "#88a8c8", sweet: "#a8d8b0", nightmare: "#9088b8", strange: "#d8b870", display: "#c8a878" };
@@ -41,13 +74,22 @@ function classifyDream(t) {
     return "collect";
 }
 
-// Words that trigger "looking" or "look" animation variants instead of the default for that category
-// (used when the dream mentions searching / observing / distance — adds variety)
+// Words that trigger "looking" or "look" animation variants — now strictly tied to 看-related verbs
+// 接住相关词 → 100% Display（接住姿势）
+function maybeCatchVariant(text, baseState) {
+    const catchWords = /接住|接到|抓住了|抱住|捧住|拿住|握住了|接下/;
+    if (catchWords.test(text)) return "display";
+    return baseState;
+}
+
+// 四处看相关词 → 100% Looking Around
+// 望远相关词 → 100% Look（手搭额头）
+// 注意：catch 优先级更高，在 handleSubmit 里先跑 catch 再跑 observation
 function maybeObservationVariant(text, baseState) {
-    const lookingWords = /四处|寻找|找不到|环顾|周围|张望|徘徊|迷路|找路/;
-    const lookWords = /远方|远处|前方|望向|看见了|看到了远|地平线|尽头/;
-    if (lookingWords.test(text) && Math.random() < 0.6) return "looking";
-    if (lookWords.test(text) && Math.random() < 0.6) return "look";
+    const lookingWords = /四处看|东看西看|环顾|张望|看了看周围|看看四周|左看右看/;
+    const lookWords = /看着远方|望着|望向|凝视|注视|看向远处/;
+    if (lookingWords.test(text)) return "looking";
+    if (lookWords.test(text)) return "look";
     return baseState;
 }
 
@@ -88,22 +130,38 @@ const RESPONSES = {
 
 // Idle whispers — most are plain idle lines, a few are paired with looking/look animations
 const IDLE_WHISPERS = [
+    // Chinese — introspective
     { text: "今夜有多少人正在做梦……", anim: "idle" },
     { text: "梦与梦之间，是否也有边界？", anim: "idle" },
-    { text: "有些梦只在黎明前几分钟存在。", anim: "idle" },
-    { text: "我听见了什么——是一个梦碎裂的声音。", anim: "idle" },
+    { text: "有些梦只在黎明前几分钟里存在。", anim: "idle" },
     { text: "人类总是忘记最美的那部分。", anim: "idle" },
     { text: "平行时空的档案室，从不关灯。", anim: "idle" },
     { text: "有一个梦，来了又走了……", anim: "idle" },
-    { text: "Somewhere, someone is dreaming of the sea.", anim: "idle" },
     { text: "碎片。又一片碎片落入档案。", anim: "idle" },
     { text: "等待本身，也是一种收集。", anim: "idle" },
     { text: "这里的每一条记录，都曾是某人的真实。", anim: "idle" },
     { text: "梦境会消散，但档案永存。", anim: "idle" },
+    { text: "有时候，遗忘本身也是一种梦。", anim: "idle" },
+    { text: "我听见了什么——是一个梦碎裂的声音。", anim: "idle" },
+    { text: "他们以为睡着就结束了，其实才刚刚开始。", anim: "idle" },
+    // English — elevated tone
+    { text: "Every dream that fades is a story untold.", anim: "idle" },
+    { text: "Somewhere, someone is dreaming of the sea.", anim: "idle" },
+    { text: "The archive never sleeps, even when you do.", anim: "idle" },
+    { text: "Dreams are the truest lies we tell ourselves.", anim: "idle" },
+    { text: "I have been here, collecting, since before you were born.", anim: "idle" },
+    { text: "Between worlds, there is always a hallway.", anim: "idle" },
+    { text: "Not all who wander in sleep are lost.", anim: "idle" },
+    { text: "Even the forgotten dreams leave a mark on the air.", anim: "idle" },
+    { text: "Time moves differently here. Minutes taste like years.", anim: "idle" },
+    { text: "Some nights, the archive fills itself.", anim: "idle" },
+    // Looking variants
     { text: "……我总觉得这附近有个梦正在靠近。", anim: "looking" },
     { text: "四处都是细微的声音，像是谁在低语。", anim: "looking" },
+    { text: "Something is moving at the edge of the archive…", anim: "looking" },
     { text: "远处好像有什么东西，在边界之外闪烁。", anim: "look" },
     { text: "我望向那个方向——那里曾经有一个梦境入口。", anim: "look" },
+    { text: "There — just beyond the horizon of sleep.", anim: "look" },
 ];
 
 const SEED_DREAMS = [
@@ -114,25 +172,55 @@ const SEED_DREAMS = [
 
 const PANEL_W = 290;
 
-function loadStorage(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
+function loadStorage(k, fb) {
+    try {
+        const v = localStorage.getItem(k);
+        if (!v) return fb;
+        const parsed = JSON.parse(v);
+        // Guard against corrupted shape (should always be an array for our usage)
+        if (!Array.isArray(parsed)) return fb;
+        return parsed;
+    } catch (e) {
+        console.warn(`loadStorage("${k}") failed, falling back:`, e);
+        return fb;
+    }
+}
 function saveStorage(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 function formatDate(d) { return d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }); }
 
 // ── IDLE WHISPER HOOK — returns { text, anim } or null ────────
 function useIdleWhisper(dreamState) {
     const [whisper, setWhisper] = useState(null);
-    const timerRef = useRef(null);
+    const outerTimer = useRef(null);
+    const innerTimer = useRef(null);
+
     useEffect(() => {
-        if (dreamState !== "idle") { setWhisper(null); return; }
+        if (dreamState !== "idle") {
+            setWhisper(null);
+            clearTimeout(outerTimer.current);
+            clearTimeout(innerTimer.current);
+            return;
+        }
+        let cancelled = false;
         const schedule = () => {
-            timerRef.current = setTimeout(() => {
+            outerTimer.current = setTimeout(() => {
+                if (cancelled) return;
                 setWhisper(getRandom(IDLE_WHISPERS));
-                setTimeout(() => { setWhisper(null); schedule(); }, 5500);
-            }, 10000 + Math.random() * 10000);
+                innerTimer.current = setTimeout(() => {
+                    if (cancelled) return;
+                    setWhisper(null);
+                    schedule();
+                }, 4500); // how long each whisper stays visible
+            }, 5000 + Math.random() * 6000); // 5-11s between whispers (was 10-20s)
         };
         schedule();
-        return () => clearTimeout(timerRef.current);
+        return () => {
+            cancelled = true;
+            clearTimeout(outerTimer.current);
+            clearTimeout(innerTimer.current);
+        };
     }, [dreamState]);
+
     return whisper;
 }
 
@@ -225,38 +313,145 @@ function DreamFragment({ active, color }) {
     );
 }
 
-// ── ANIMATED MODEL ────────────────────────────────────────────
-function AnimatedModel({ path, loop = true }) {
+// ── ANIMATED MODEL — single instance, smooth crossfade via opacity ──
+function AnimatedModel({ path, loop = true, onFinished, fadingOut, onFadeOutDone, onPoseReady }) {
     const group = useRef();
     const { scene, animations } = useGLTF(path);
     const { actions } = useAnimations(animations, group);
-    useMemo(() => {
+    const opacityRef = useRef(0);
+    const settledRef = useRef(false);
+    const poseReadyRef = useRef(false); // true once the mixer has advanced at least one frame
+
+    // Cache the material list ONCE — never traverse the scene graph per-frame again
+    const materials = useMemo(() => {
+        const list = [];
         scene.traverse(c => {
-            if (c.isMesh) {
+            if (c.isMesh && c.material) {
                 const ms = Array.isArray(c.material) ? c.material : [c.material];
-                ms.forEach(m => { if (m) { m.envMapIntensity = 1.3; m.needsUpdate = true; } });
+                ms.forEach(m => {
+                    if (m) {
+                        m.envMapIntensity = 1.3;
+                        m.transparent = true;
+                        m.opacity = 0;
+                        m.needsUpdate = true;
+                        list.push(m);
+                    }
+                });
             }
         });
+        return list;
     }, [scene]);
+
     useEffect(() => {
+        poseReadyRef.current = false;
         const names = Object.keys(actions);
-        if (!names.length) return;
+        if (!names.length) { poseReadyRef.current = true; onPoseReady && onPoseReady(); return; }
         const act = actions[names[0]];
-        act.reset().setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1).fadeIn(0.4).play();
-        if (!loop) act.clampWhenFinished = true;
-        return () => { try { act.stop(); } catch { } };
-    }, [actions, loop]);
+        act.reset().setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1).play();
+        if (!loop) {
+            act.clampWhenFinished = true;
+            const mixer = act.getMixer();
+            const onDone = (e) => { if (e.action === act && onFinished) onFinished(); };
+            mixer.addEventListener("finished", onDone);
+            // Force the mixer to evaluate the FIRST pose immediately (dt=0 advances bones to frame 0
+            // of the clip instead of leaving the skeleton in bind/T-pose for a frame).
+            mixer.update(0);
+            poseReadyRef.current = true;
+            onPoseReady && onPoseReady();
+            return () => mixer.removeEventListener("finished", onDone);
+        }
+        // Same immediate-pose trick for looping clips (idle, collect, etc.)
+        act.getMixer().update(0);
+        poseReadyRef.current = true;
+        onPoseReady && onPoseReady();
+        return () => { try { act.fadeOut(0.4); } catch { } };
+    }, [actions, loop, onFinished, onPoseReady]);
+
+    // Reset "settled" flag whenever the fade direction changes, so it animates again
+    useEffect(() => { settledRef.current = false; }, [fadingOut]);
+
+    // Smooth opacity crossfade using the cached material list — O(1) per frame, not O(meshCount)
+    // Opacity is held at 0 until the pose has been advanced at least once, so we never reveal a T-pose frame.
+    useFrame(() => {
+        if (!poseReadyRef.current) return;
+        if (settledRef.current) return; // skip all work once opacity has converged
+        const target = fadingOut ? 0 : 1;
+        opacityRef.current = THREE.MathUtils.lerp(opacityRef.current, target, 0.065);
+        for (let i = 0; i < materials.length; i++) materials[i].opacity = opacityRef.current;
+
+        if (Math.abs(opacityRef.current - target) < 0.01) {
+            opacityRef.current = target;
+            for (let i = 0; i < materials.length; i++) materials[i].opacity = target;
+            settledRef.current = true;
+            if (fadingOut && onFadeOutDone) onFadeOutDone();
+        }
+    });
+
     return <group ref={group} position={[0, 0.18, 0]}><primitive object={scene} /></group>;
 }
 
-// ── AVATAR ────────────────────────────────────────────────────
-function Avatar({ dreamState }) {
+// Preload every GLB once — instant switching without re-fetch, but each model
+// is only ever MOUNTED (not all 10 at once) to avoid GPU/WebGL overload.
+// Staged preload: Idle.glb loads immediately (it's needed first, on every visit).
+// The other 9 files preload lazily in the background AFTER the page has settled,
+// so a first-time visitor on a slow connection sees Somni idle quickly instead of
+// the browser trying to fetch 10 files at once and stalling everything.
+useGLTF.preload(STATE_TO_GLB.idle);
+
+if (typeof window !== "undefined") {
+    window.setTimeout(() => {
+        Object.entries(STATE_TO_GLB).forEach(([key, path]) => {
+            if (key === "idle") return;
+            useGLTF.preload(path);
+        });
+    }, 2500); // give the initial idle model + UI time to load first
+}
+
+
+
+// ── AVATAR — mounts current model + briefly the outgoing one for crossfade ──
+function Avatar({ dreamState, onOneShotFinished, onModelReady }) {
     const path = STATE_TO_GLB[dreamState] ?? STATE_TO_GLB.idle;
     const fc = STATE_COLORS[dreamState] ?? "#c8b89a";
     const isOneShot = dreamState === "waving" || dreamState === "farewell";
+
+    // Track outgoing model so we can crossfade it out before unmounting
+    const [outgoing, setOutgoing] = useState(null); // { path, loop }
+    const currentPathRef = useRef(path);
+    const readyFiredRef = useRef(false);
+
+    useEffect(() => {
+        if (currentPathRef.current !== path) {
+            setOutgoing({ path: currentPathRef.current });
+            currentPathRef.current = path;
+        }
+    }, [path]);
+
+    const handleFirstReady = () => {
+        if (!readyFiredRef.current) { readyFiredRef.current = true; onModelReady && onModelReady(); }
+    };
+
     return (<>
         <Suspense fallback={null}>
-            <AnimatedModel key={path} path={path} loop={!isOneShot} />
+            {/* Outgoing model — fades out then unmounts itself */}
+            {outgoing && outgoing.path !== path && (
+                <AnimatedModel
+                    key={"out-" + outgoing.path}
+                    path={outgoing.path}
+                    loop={true}
+                    fadingOut={true}
+                    onFadeOutDone={() => setOutgoing(null)}
+                />
+            )}
+            {/* Current model — fades in */}
+            <AnimatedModel
+                key={"cur-" + path}
+                path={path}
+                loop={!isOneShot}
+                fadingOut={false}
+                onFinished={isOneShot ? onOneShotFinished : undefined}
+                onPoseReady={handleFirstReady}
+            />
         </Suspense>
         {[...Array(6)].map((_, i) => <DreamFragment key={i} active={dreamState === "display"} color={fc} />)}
     </>);
@@ -516,7 +711,7 @@ function SidePanel({ tab, setTab, dream, setDream, isShared, setIsShared, myLogs
 }
 
 // ── MAIN ──────────────────────────────────────────────────────
-export default function App() {
+function AppInner() {
     const [showIntro, setShowIntro] = useState(true);
     const [showFarewell, setShowFarewell] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -530,7 +725,42 @@ export default function App() {
     const [bubbleColor, setBubbleColor] = useState("#c9b9a6");
     const [tab, setTab] = useState("input");
     const [modal, setModal] = useState(null);
+    const [modelReady, setModelReady] = useState(false);
+    const [musicOn, setMusicOn] = useState(true); // music is ON by default
     const timerRef = useRef(null);
+    const audioRef = useRef(null); // holds the HTMLAudioElement for BGM
+
+    // Initialise BGM once on mount — auto-play muted then ramp up (bypasses browser autoplay block)
+    useEffect(() => {
+        const audio = new Audio("/bgm.mp3");
+        audio.loop = true;
+        audio.volume = 0;
+        audioRef.current = audio;
+        // Try to play; browsers may block until user interacts — we catch that silently
+        const playPromise = audio.play();
+        if (playPromise) playPromise.catch(() => { });
+        return () => { audio.pause(); audio.src = ""; };
+    }, []);
+
+    // Fade volume in/out smoothly when musicOn toggles, or when user first interacts
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        const target = musicOn ? 0.45 : 0;
+        const step = musicOn ? 0.02 : 0.03;
+        const tick = setInterval(() => {
+            if (musicOn) {
+                // Ensure it's playing (needed after first user gesture unlocks autoplay)
+                if (audio.paused) audio.play().catch(() => { });
+                audio.volume = Math.min(audio.volume + step, target);
+                if (audio.volume >= target) clearInterval(tick);
+            } else {
+                audio.volume = Math.max(audio.volume - step, 0);
+                if (audio.volume <= 0) { audio.pause(); clearInterval(tick); }
+            }
+        }, 80);
+        return () => clearInterval(tick);
+    }, [musicOn]);
 
     const idleWhisper = useIdleWhisper(dreamState);
     const visibleBubbleText = dreamState === "idle" ? (idleWhisper?.text ?? "") : bubbleText;
@@ -554,26 +784,42 @@ export default function App() {
         }, dur);
     };
 
-    // On entry: Waving greeting, then settle into idle
+    // On entry (initial intro OR returning from farewell): wait for the model to be ready,
+    // THEN wait several more seconds of calm idle time before waving — exactly once per session
+    const hasGreetedRef = useRef(false);
     useEffect(() => {
-        if (showIntro) return;
-        setBubbleText("……啊，有人来了。欢迎来到梦境档案馆。");
-        setBubbleColor("#c9b9a6");
-        const t = setTimeout(() => { setDreamState("idle"); setBubbleText(""); }, 4500);
-        return () => clearTimeout(t);
-    }, [showIntro]);
+        if (showIntro || showFarewell) { hasGreetedRef.current = false; return; }
+        if (hasGreetedRef.current) return; // never fire twice for the same session
+        if (!modelReady) return; // don't even start counting until Somni has actually loaded in
+        setDreamState("idle"); // neutral while waiting
+        const delayBeforeGreeting = setTimeout(() => {
+            hasGreetedRef.current = true;
+            setDreamState("waving");
+            const nameGreet = username && username !== "匿名旅人" ? `……啊，是${username}。欢迎来到梦境档案馆。` : "……啊，有人来了。欢迎来到梦境档案馆。";
+            setBubbleText(nameGreet);
+            setBubbleColor("#c9b9a6");
+        }, 2000); // 2s after model is ready — feels like Somni "notices" you
+        return () => clearTimeout(delayBeforeGreeting);
+    }, [showIntro, showFarewell, modelReady]);
+
+    // When the one-shot waving animation finishes, settle into idle (keeps the greeting text a bit longer first)
+    const handleWavingFinished = () => {
+        setTimeout(() => { setDreamState("idle"); setBubbleText(""); }, 1800);
+    };
 
     const handleSubmit = () => {
         if (!dream.trim()) return;
         const text = dream.trim();
-        let state = classifyDream(text);
-        state = maybeObservationVariant(text, state); // may swap to looking/look for variety
-        const responsePool = RESPONSES[state] || RESPONSES.collect;
+        const baseState = classifyDream(text); // category stored in archive
+        // Priority: 接住 > 四处看/望远 > base animation
+        let animState = maybeCatchVariant(text, baseState);
+        if (animState === baseState) animState = maybeObservationVariant(text, baseState);
+        const responsePool = RESPONSES[baseState] || RESPONSES.collect;
         const response = getRandom(responsePool);
-        const entry = { id: Date.now(), text, state: classifyDream(text), date: formatDate(new Date()), author: username || "匿名旅人", shared: isShared, response };
+        const entry = { id: Date.now(), text, state: baseState, date: formatDate(new Date()), author: username || "匿名旅人", shared: isShared, response };
         const nm = [entry, ...myLogs]; setMyLogs(nm); saveStorage("dc_my_dreams", nm);
         if (isShared) { const np = [entry, ...publicLogs]; setPublicLogs(np); saveStorage("dc_public_dreams", np); }
-        fire(state, response, STATE_COLORS[entry.state] || "#a8a890", 7000);
+        fire(animState, response, STATE_COLORS[baseState] || "#a8a890", 7000);
         setDream("");
     };
 
@@ -599,7 +845,8 @@ export default function App() {
 
     const handleReturn = () => {
         setShowFarewell(false);
-        setDreamState("waving");
+        setBubbleText("");          // clear stale farewell line so it doesn't persist
+        setDreamState("idle");      // start neutral, the entry effect below re-triggers waving
     };
 
     const cfg = STATE_CFG[displayedDreamState] ?? STATE_CFG.idle;
@@ -617,6 +864,7 @@ export default function App() {
             <CanvasWithRecovery
                 style={{ position: "absolute", inset: 0, zIndex: 2 }}
                 camera={{ position: [0, 0.9, 2.5], fov: 38 }}
+                dpr={[1, 1.5]}
                 gl={{ antialias: true, alpha: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
             >
                 <Environment preset="sunset" />
@@ -625,12 +873,33 @@ export default function App() {
                 <directionalLight position={[-2, 1, -1]} intensity={0.25} color="#8899cc" />
                 <directionalLight position={[0, 2, 3.5]} intensity={0.5} color="#f0e8e0" />
                 <DreamDust />
-                <Avatar dreamState={dreamState} />
+                <Avatar dreamState={dreamState} onOneShotFinished={dreamState === "waving" ? handleWavingFinished : undefined} onModelReady={() => setModelReady(true)} />
                 <OrbitControls enablePan={false} enableZoom={false} enableRotate={true}
                     target={[0, 0.7, 0]} minPolarAngle={Math.PI / 3.5} maxPolarAngle={Math.PI / 2.1}
                     minAzimuthAngle={-Math.PI / 4.5} maxAzimuthAngle={Math.PI / 4.5}
                     dampingFactor={0.06} enableDamping />
             </CanvasWithRecovery>
+
+            {/* Loading overlay — shown until the first model has actually rendered a pose,
+          so first-time visitors never just see a blank/frozen canvas while assets fetch */}
+            {!modelReady && !showIntro && (
+                <div style={{
+                    position: "absolute", inset: 0, zIndex: 15,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    background: "rgba(14,12,10,0.55)", backdropFilter: "blur(2px)",
+                    pointerEvents: "none",
+                }}>
+                    <div style={{
+                        width: 28, height: 28, borderRadius: "50%",
+                        border: "2px solid rgba(201,185,166,0.18)",
+                        borderTopColor: "rgba(201,185,166,0.7)",
+                        animation: "somniSpin 0.9s linear infinite",
+                        marginBottom: 14,
+                    }} />
+                    <div style={{ fontSize: 11, color: "#8a7f72", letterSpacing: "0.14em" }}>Somni 正在到来……</div>
+                    <style>{`@keyframes somniSpin{to{transform:rotate(360deg);}}`}</style>
+                </div>
+            )}
 
             {/* Speech text — no box, above Somni's head */}
             <div style={{ position: "absolute", inset: 0, zIndex: 5, pointerEvents: "none" }}>
@@ -663,17 +932,31 @@ export default function App() {
                     <div style={{ fontSize: 14, color: "#8a8072", letterSpacing: "0.06em" }}>梦境档案馆</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
+                    {/* Music toggle */}
+                    <button
+                        onClick={() => setMusicOn(v => !v)}
+                        style={{
+                            background: musicOn ? "rgba(201,185,166,0.1)" : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${musicOn ? "rgba(201,185,166,0.3)" : "rgba(255,255,255,0.07)"}`,
+                            borderRadius: 7, cursor: "pointer", padding: "4px 11px",
+                            color: musicOn ? "#9a8d7e" : "#3a3530",
+                            fontSize: 10, lineHeight: 1, transition: "all 0.3s",
+                            letterSpacing: "0.1em", fontFamily: "inherit",
+                        }}
+                    >
+                        {musicOn ? "♫ ON" : "♫ OFF"}
+                    </button>
                     {username && <div style={{ fontSize: 12, color: "#7a7068", letterSpacing: "0.1em", borderRight: "1px solid rgba(255,255,255,0.08)", paddingRight: 10 }}>{username}</div>}
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, boxShadow: displayedDreamState !== "idle" ? `0 0 8px ${cfg.color},0 0 18px ${cfg.color}55` : `0 0 5px ${cfg.color}70`, transition: "all 1s ease" }} />
                     <div style={{ fontSize: 11, color: cfg.color, letterSpacing: "0.1em", transition: "color 1s ease", fontStyle: "italic" }}>{cfg.label}</div>
                 </div>
             </div>
 
-            {/* Bottom-right exit button */}
+            {/* Exit button — offset from corner, clear of the right archive panel */}
             {!showIntro && !showFarewell && (
                 <button onClick={() => setShowExitConfirm(true)}
                     style={{
-                        position: "absolute", bottom: 20, right: 20, zIndex: 20,
+                        position: "absolute", bottom: 36, right: 336, zIndex: 20,
                         padding: "9px 18px", borderRadius: 10,
                         border: "1px solid rgba(255,255,255,0.1)", background: "rgba(16,13,11,0.7)",
                         backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
@@ -688,5 +971,14 @@ export default function App() {
 
             {modal && <DreamCard dream={modal.dream} onClose={() => setModal(null)} onShare={handleShare} onDelete={modal.canDelete ? handleDelete : null} />}
         </div>
+    );
+}
+
+// ── DEFAULT EXPORT — wraps the app so crashes show a recoverable screen ──
+export default function App() {
+    return (
+        <ErrorBoundary>
+            <AppInner />
+        </ErrorBoundary>
     );
 }
